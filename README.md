@@ -10,11 +10,11 @@ Not all files will contain information; I've tried to make it as comprehensive a
 I also added a "_playback_status.txt" file that displays the current status (play/pause/stop/none) to help you create triggers with StreamerBot or other tools.
 Files are updated every 5 seconds if there was any changes.
 
-### FOLDER OVERVIEW
+#### FOLDER OVERVIEW
 ```
 C:\NowPlayingToFile\
 └───Main
-│   No_playback_status.txt
+│   _playback_status.txt
 │   album.txt
 │   album_spaced.txt
 │   album_track_count.txt
@@ -28,12 +28,12 @@ C:\NowPlayingToFile\
 │   cover.jpg
 │   
 └───Deezer
-│   No_playback_status.txt
+│   _playback_status.txt
 │   album.txt
 │   ...
 │   
 └───VLC
-│   No_playback_status.txt
+│   _playback_status.txt
 │   album.txt
 │   ...
 │   
