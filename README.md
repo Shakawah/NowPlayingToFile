@@ -10,7 +10,35 @@ Not all files will contain information; I've tried to make it as comprehensive a
 I also added a "_playback_status.txt" file that displays the current status (play/pause/stop/none) to help you create triggers with StreamerBot or other tools.
 Files are updated every 5 seconds if there was any changes.
 
-
+### FOLDER OVERVIEW
+```
+C:\NowPlayingToFile\
+└───Main
+│   No_playback_status.txt
+│   album.txt
+│   album_spaced.txt
+│   album_track_count.txt
+│   artist.txt
+│   artist_spaced.txt
+│   artist-title.txt
+│   artist-title_spaced.txt
+│   title.txt
+│   title_spaced.txt
+│   track_number.txt
+│   cover.jpg
+│   
+└───Deezer
+│   No_playback_status.txt
+│   album.txt
+│   ...
+│   
+└───VLC
+│   No_playback_status.txt
+│   album.txt
+│   ...
+│   
+└───etc.
+```
 
 ## HOW TO USE IN OBS ? 
 For each text information you want to show :
@@ -19,7 +47,9 @@ For the cover or image :
 Add Image Source and select the Cover file
 Everything should be updated automatically
 
+
 ## SUPPORT ME 
 Feel free to share the Project.
 Made by Shakawah
 Support me  https://ko-fi.com/shakawah
+
