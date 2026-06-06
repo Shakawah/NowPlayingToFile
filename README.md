@@ -1,6 +1,11 @@
+
+
 # NowPlayingToFile
 Grab Windows media informations (VLC, Chrome, Deezer, TIDAL, etc.) to files so you can use it as Text Source for OBS for instance.  
-  
+
+#### [▶️ DOWNLOAD THE LATEST RELEASE HERE](https://github.com/Shakawah/NowPlayingToFile/releases/download/v0.1/NowPlayingToFile.exe)
+
+
 ## HOW DOES IT WORKS ? 
 When you play a song or videos from any source (Chrome, TIDAL, Deezer, VLC, or anything captured by Windows), **all the available data on the media will be stored here : C:\NowPlayingToFile**  
 The folder "Main" contains the data of the current active media session.  
@@ -52,4 +57,4 @@ Everything should be updated automatically
 Feel free to share the Project.  
 Made by Shakawah  
 Support me  https://ko-fi.com/shakawah
-
+ 
