@@ -8,7 +8,7 @@ Directory.CreateDirectory(mainOutputFolder);
 
 Dictionary<string, string> lastSongsBySource = new();
 
-Console.WriteLine("NowPlayingToFile - STARTING");
+Console.WriteLine("NowPlayingToFile v1.0 - STARTING");
 
 Console.WriteLine("=========================================================");
 Console.WriteLine("================== HOW DOES IT WORKS ? ==================");
@@ -143,9 +143,7 @@ while (true)
                 string sessionKey = sourceName;
                 string songKey = $"{title_}|{artist_}|{album_}|{albumTrackCount_}|{TrackNumber_}";
 
-                Console.WriteLine(lastSongsBySource[sessionKey]);
-
-                if (lastSongsBySource.TryGetValue(sessionKey, out string? lastSessionSong) && songKey != lastSessionSong)
+                if (!lastSongsBySource.TryGetValue(sessionKey, out string? lastSessionSong) || songKey != lastSessionSong)
                 {
                     lastSongsBySource[sessionKey] = songKey;
 
