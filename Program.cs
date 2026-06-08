@@ -6,9 +6,12 @@ Directory.CreateDirectory(outputFolder);
 string mainOutputFolder = @"C:\NowPlayingToFile\Main";
 Directory.CreateDirectory(mainOutputFolder);
 
+string sessionsFile = Path.Combine(outputFolder, "sessions.txt");
+List<string> knownSessions = File.Exists(sessionsFile) ? File.ReadAllLines(sessionsFile).ToList() : new List<string>();
+
 Dictionary<string, string> lastSongsBySource = new();
 
-Console.WriteLine("NowPlayingToFile v1.0 - STARTING");
+Console.WriteLine("NowPlayingToFile v1.1 - STARTING");
 
 Console.WriteLine("=========================================================");
 Console.WriteLine("================== HOW DOES IT WORKS ? ==================");
@@ -48,6 +51,7 @@ Console.WriteLine("");
 Console.WriteLine("");
 Console.WriteLine("=========================================================");
 Console.WriteLine("The logs bellow will show you what informations NowPlayingToFile is grabbing");
+Console.WriteLine("");
 
 while (true)
 {
@@ -61,6 +65,17 @@ while (true)
         {
             Console.WriteLine($"{DateTime.Now:T} - No active media found");
             File.WriteAllText(Path.Combine(mainOutputFolder, "_playback_status.txt"), "none");
+
+
+            foreach (var sessionName in knownSessions)
+            {
+                string folder = Path.Combine(outputFolder, sessionName);
+
+                if (Directory.Exists(folder))
+                {
+                    File.WriteAllText(Path.Combine(folder, "_playback_status.txt"), "none");
+                }
+            }
 
             await Task.Delay(5000);
             continue;
@@ -81,6 +96,7 @@ while (true)
         string trackNumber = media.TrackNumber > 0 ? media.TrackNumber.ToString() : "";
 
         string full = string.IsNullOrWhiteSpace(artist) ? title : $"{artist} - {title}";
+
 
         if ((!string.IsNullOrWhiteSpace(full)) && (!lastSongsBySource.TryGetValue(mainKey, out string? lastMainSong) || full != lastMainSong))
         {
@@ -115,6 +131,9 @@ while (true)
             Console.WriteLine($"{DateTime.Now:T} - MAIN SESSION {mainSession.SourceAppUserModelId} - {full}");
         }
 
+
+        List<string> currentSessions = new();
+
         foreach (var session_ in allSessions)
         {
             try
@@ -124,6 +143,13 @@ while (true)
                 string safeFolderName = string.Concat(sourceName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
                 string sessionFolder = Path.Combine(outputFolder, safeFolderName);
                 Directory.CreateDirectory(sessionFolder);
+
+                if (!knownSessions.Contains(safeFolderName))
+                {
+                    knownSessions.Add(safeFolderName);
+                    File.WriteAllLines(sessionsFile, knownSessions);
+                }
+                currentSessions.Add(safeFolderName);
 
                 var media_ = await session_.TryGetMediaPropertiesAsync();
 
@@ -177,13 +203,27 @@ while (true)
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error : {ex.Message}");
+                Console.WriteLine("========== ERROR ==========");
+                Console.WriteLine(ex.ToString());
+                Console.WriteLine("===========================");
+            }
+        }
+
+        foreach (var sessionName in knownSessions)
+        {
+            string folder = Path.Combine(outputFolder, sessionName);
+
+            if (!currentSessions.Contains(sessionName) && Directory.Exists(folder))
+            {
+                File.WriteAllText(Path.Combine(folder, "_playback_status.txt"), "none");
             }
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"{DateTime.Now:T} - Erreur : {ex.Message}");
+        Console.WriteLine("========== ERROR ==========");
+        Console.WriteLine(ex.ToString());
+        Console.WriteLine("===========================");
     }
 
     await Task.Delay(5000);
