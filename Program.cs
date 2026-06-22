@@ -1,4 +1,4 @@
-﻿
+﻿//Rappel pour moi pour compiler : dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
 using Windows.Media.Control;
 
 string outputFolder = @"C:\NowPlayingToFile";
@@ -11,7 +11,7 @@ List<string> knownSessions = File.Exists(sessionsFile) ? File.ReadAllLines(sessi
 
 Dictionary<string, string> lastSongsBySource = new();
 
-Console.WriteLine("NowPlayingToFile v1.1 - STARTING");
+Console.WriteLine("NowPlayingToFile v1.2 - STARTING");
 
 Console.WriteLine("=========================================================");
 Console.WriteLine("================== HOW DOES IT WORKS ? ==================");
@@ -96,11 +96,11 @@ while (true)
         string trackNumber = media.TrackNumber > 0 ? media.TrackNumber.ToString() : "";
 
         string full = string.IsNullOrWhiteSpace(artist) ? title : $"{artist} - {title}";
+        string songKey = $"{title}|{artist}|{album}|{albumTrackCount}|{trackNumber}";
 
-
-        if ((!string.IsNullOrWhiteSpace(full)) && (!lastSongsBySource.TryGetValue(mainKey, out string? lastMainSong) || full != lastMainSong))
+        if ((!string.IsNullOrWhiteSpace(songKey)) && (!lastSongsBySource.TryGetValue(mainKey, out string? lastMainSong) || songKey != lastMainSong))
         {
-            lastSongsBySource[mainKey] = full;
+            lastSongsBySource[mainKey] = songKey;
 
             File.WriteAllText(Path.Combine(mainOutputFolder, "title.txt"), title);
             File.WriteAllText(Path.Combine(mainOutputFolder, "title_spaced.txt"), $"{title}          ");
@@ -119,16 +119,15 @@ while (true)
             File.WriteAllText(Path.Combine(mainOutputFolder, "track_number.txt"), trackNumber);
 
 
-            if (media.Thumbnail != null)
-            {
-                using var stream = await media.Thumbnail.OpenReadAsync();
-                using var input = stream.AsStreamForRead();
-                using var output = File.Create(Path.Combine(mainOutputFolder, "cover.jpg"));
-
-                await input.CopyToAsync(output);
-            }
-
             Console.WriteLine($"{DateTime.Now:T} - MAIN SESSION {mainSession.SourceAppUserModelId} - {full}");
+        }
+        if (media.Thumbnail != null)
+        {
+            using var stream = await media.Thumbnail.OpenReadAsync();
+            using var input = stream.AsStreamForRead();
+            using var output = File.Create(Path.Combine(mainOutputFolder, "cover.jpg"));
+
+            await input.CopyToAsync(output);
         }
 
 
@@ -167,11 +166,11 @@ while (true)
                 string full_ = string.IsNullOrWhiteSpace(artist_) ? title_ : $"{artist_} - {title_}";
 
                 string sessionKey = sourceName;
-                string songKey = $"{title_}|{artist_}|{album_}|{albumTrackCount_}|{TrackNumber_}";
+                string songKey_ = $"{title_}|{artist_}|{album_}|{albumTrackCount_}|{TrackNumber_}";
 
-                if (!lastSongsBySource.TryGetValue(sessionKey, out string? lastSessionSong) || songKey != lastSessionSong)
+                if (!lastSongsBySource.TryGetValue(sessionKey, out string? lastSessionSong) || songKey_ != lastSessionSong)
                 {
-                    lastSongsBySource[sessionKey] = songKey;
+                    lastSongsBySource[sessionKey] = songKey_;
 
                     File.WriteAllText(Path.Combine(sessionFolder, "title.txt"), title_);
                     File.WriteAllText(Path.Combine(sessionFolder, "title_spaced.txt"), $"{title_}          ");
@@ -189,16 +188,16 @@ while (true)
                     File.WriteAllText(Path.Combine(sessionFolder, "track_number.txt"), TrackNumber_);
 
 
-                    if (media_.Thumbnail != null)
-                    {
-                        using var stream = await media_.Thumbnail.OpenReadAsync();
-                        using var input = stream.AsStreamForRead();
-                        using var output = File.Create(Path.Combine(sessionFolder, "cover.jpg"));
-
-                        await input.CopyToAsync(output);
-                    }
-
                     Console.WriteLine($"{DateTime.Now:T} - {session_.SourceAppUserModelId} - {full_}");
+                }
+
+                if (media_.Thumbnail != null)
+                {
+                    using var stream = await media_.Thumbnail.OpenReadAsync();
+                    using var input = stream.AsStreamForRead();
+                    using var output = File.Create(Path.Combine(sessionFolder, "cover.jpg"));
+
+                    await input.CopyToAsync(output);
                 }
             }
             catch (Exception ex)
