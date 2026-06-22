@@ -3,7 +3,7 @@
 # NowPlayingToFile
 Grab Windows media informations (VLC, Chrome, Deezer, TIDAL, etc.) to files so you can use it as Text Source for OBS for instance.  
 
-#### [▶️ DOWNLOAD THE LATEST RELEASE HERE](https://github.com/Shakawah/NowPlayingToFile/releases/download/v0.1/NowPlayingToFile.exe)
+#### [▶️ DOWNLOAD THE LATEST RELEASE HERE](https://github.com/Shakawah/NowPlayingToFile/releases/download/V1.1_RELEASE/NowPlayingToFile.exe)
 
 
 ## HOW DOES IT WORKS ? 
