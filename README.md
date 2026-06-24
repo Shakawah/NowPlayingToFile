@@ -4,6 +4,7 @@
 Grab Windows media informations (VLC, Chrome, Deezer, TIDAL, etc.) to files so you can use it as Text Source for OBS for instance.  
 
 #### [▶️ DOWNLOAD THE LATEST RELEASE HERE](https://github.com/Shakawah/NowPlayingToFile/releases/download/V1.2_RELEASE/NowPlayingToFile.exe)
+.NET 8.0 required
 
 
 ## HOW DOES IT WORKS ? 
