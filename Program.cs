@@ -1,20 +1,25 @@
 ﻿//Rappel pour moi pour compiler : dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+using System;
 using System.Buffers;
 using System.Buffers.Text;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-
 using System.Text.RegularExpressions;
-using TimelineSync = System.Collections.Generic.Dictionary<string, (double Position, System.DateTimeOffset At, string Status)>;
+using System.Threading;
+using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Media.Control;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using TimelineSync = System.Collections.Generic.Dictionary<string, (double Position, System.DateTimeOffset At, string Status)>;
 
 ///// SETTINGS.INI
 string settingsPath = Path.Combine(AppContext.BaseDirectory, "NowPlayingToFile_Settings.ini");
@@ -93,7 +98,7 @@ int timeCheck =
 bool mediaControl = SettingBool("mediaControl");
 bool debug = SettingBool("debug");
 bool checkForUpdates = SettingBool("checkForUpdates");
-const string currentVersion = "v2.0";
+const string currentVersion = "2.1";
 const string githubLatestReleaseApi = "https://api.github.com/repos/Shakawah/NowPlayingToFile/releases/latest";
 
 Console.WriteLine("==========================================");
@@ -126,6 +131,7 @@ if (writefile)
 
 WriteStartConsole();
 CreateReadme();
+CreateApiDoc();
 
 if (checkForUpdates)
     _ = Task.Run(CheckForUpdatesAsync);
@@ -180,7 +186,6 @@ while (true)
 
         var mainSession = manager.GetCurrentSession();
         var allSessions = manager.GetSessions();
-
 
         if (mainSession == null)
         {
@@ -741,7 +746,9 @@ void UpdateTimelineFiles(GlobalSystemMediaTransportControlsSession session, stri
     }
 }
 
-////// README
+////// README & DOC
+
+
 void WriteStartConsole()
 {
     Console.WriteLine("=========================================================");
@@ -765,7 +772,11 @@ void WriteStartConsole()
     Console.WriteLine("Everything should be updated automatically");
     Console.WriteLine("");
     Console.WriteLine("=========================================================");
+    Console.WriteLine("===================== MORE DETAILS ======================");
+    Console.WriteLine("=========================================================");
+    Console.WriteLine("You can find the README.txt and API_Doc.txt on the Now Playing To File Output Folder (default: C:/NowPlayingToFile/");
     Console.WriteLine("");
+    Console.WriteLine("=========================================================");
     Console.WriteLine("The logs bellow will show you what informations NowPlayingToFile is grabbing");
     Console.WriteLine("");
     Console.WriteLine("=========================================================");
@@ -781,12 +792,24 @@ void WriteStartConsole()
     Console.WriteLine("=========================================================");
     Console.WriteLine("");
 }
+
+void WriteDocumentationIfChanged(string path, string content)
+{
+    if (File.Exists(path) &&
+        File.ReadAllText(path) == content)
+    {
+        return;
+    }
+
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    File.WriteAllText(path, content);
+
+    Console.WriteLine($"Documentation updated: {Path.GetFileName(path)}");
+}
+
 void CreateReadme()
 {
     string readmePath = Path.Combine(outputFolder, "README.txt");
-
-    if (File.Exists(readmePath))
-        return;
 
     string readme = """
 =========================================================
@@ -850,8 +873,183 @@ Support me ♥ https://ko-fi.com/shakawah
 =========================================================
 """;
 
-    File.WriteAllText(readmePath, readme);
+    WriteDocumentationIfChanged(readmePath, readme);
 }
+
+
+void CreateApiDoc()
+{
+    string apiDocPath = Path.Combine(outputFolder, "API_Doc.txt");
+
+    string apiDoc = """
+=========================================================
+============== NOWPLAYINGTOFILE API DOC =================
+=========================================================
+NowPlayingToFile provides an HTTP API and a WebSocket server to retrieve media information and control playback 
+Both are only on local : 127.0.0.1
+
+You can change the port in the NowPlayingToFile_Settings.ini created in your .exe folder.
+Default values for this are : 
+http=true
+websocket=true
+mediaControl=true
+port=8937
+
+=========================================================
+======================= HTTP ============================
+=========================================================
+==============================
+=== HTTP : GET INFORMATION ===
+==============================
+HTTP URL : http://127.0.0.1:8937/
+You can see the current medias playing (and refresh to get updated datas)
+main            : Current main Windows media session (defined by Windows so use with care)
+sessions        : All detected media sessions
+playbackStatus  : Show media status : play, pause, stop or none
+static          : Static media informations
+dynamic         : Dynamic media informations
+timeline        : Playback position and duration
+controls        : Available playback controls
+
+==============================
+==== HTTP : MEDIA CONTROL ====
+==============================
+Endpoint :
+    POST http://127.0.0.1:8937/control
+Parameters :
+    source : Media session name.
+        Default is Main but i would recommand giving the media since only Windows controls what's the "main" media.
+        Use the same name as you can see in the HTTP sessions
+    action : Playback action (play, pause, toggle, next, previous, stop)
+
+Exemple to pause TIDAL (which is shown in the sessions as "com.squirrel.TIDAL.TIDAL" :
+    POST "http://127.0.0.1:8937/control?source=com.squirrel.TIDAL.TIDAL&action=pause"
+(if you want to test with PowerShell : Invoke-RestMethod -Method POST "http://127.0.0.1:8937/control?source=com.squirrel.TIDAL.TIDAL&action=pause"")
+
+If it works you should have a response :
+{
+  "success": true,
+  "source": "com.squirrel.TIDAL.TIDAL",
+  "action": "pause"
+}
+
+/!\ Not every media player supports every playback action (ie : you can't send "next" on a Twitch live)
+
+
+=========================================================
+====================== WEBSOCKET ========================
+=========================================================
+==============================
+==== WS : GET INFORMATION ====
+==============================
+WebSocket URL: ws://127.0.0.1:8937/ws/
+The server will send you a snapshot on connection, and then automatically sends all the changes.
+
+Exception for the timeline, i wont send it each second when it's just playing, instead i send it when it's usefull :
+        - When the media changes so you know you have to start over
+        - When the media is paused
+        - When the media resumes
+        - When the user moves it manually
+The timeline is not sent every second during normal playback, instead, the server sends a timeline update when:
+    - The media changes
+    - Playback is paused or resumed
+    - A significant timeline difference is detected (when the user changes the timeline position manually)
+
+You can use the last received position and timestamp to estimate the current playback position between updates.
+
+With PowerShell you can try connecting like this :
+    wscat -c ws://127.0.0.1:8937/ws/
+
+You should receive the snapshot on the current media state.
+The cover is stored on base64 so if you see a lot of random letters and numbers that should be it !
+
+It should look like this : 
+{
+  "type": "snapshot",
+  "data": {
+    "main": {},
+    "sessions": {}
+  }
+}
+
+With the "main" object containing the main media session and the "sessions" object containing all detected media sessions with their source names (that can be just Numbers sometimes),
+and you should have all the datas available in it like this for exemple : 
+"com.squirrel.TIDAL.TIDAL": {
+  "source": "com.squirrel.TIDAL.TIDAL",
+  "playbackStatus": "play",
+  "controls": {
+    "Play": false,
+    "Pause": true,
+    "Toggle": true,
+    "Next": true,
+    "Previous": true,
+    "Stop": true
+  },
+  "static": {
+    "title": "Bien cordialement",
+    "artist": "The Toxic Avenger",
+    "artistTitle": "The Toxic Avenger - Bien cordialement",
+    "album": "Yes Future (Extended)",
+    "cover": "*ImageBase64*"
+  },
+  "dynamic": {
+    "title": "Bien cordialement",
+    "artist": "The Toxic Avenger",
+    "artistTitle": "The Toxic Avenger - Bien cordialement",
+    "album": "Yes Future (Extended)",
+    "cover": "*ImageBase64*"
+  },
+  "timeline": {
+    "position": "140.5",
+    "duration": "423.4",
+    "progress": "33.18",
+    "remaining": "282.9",
+    "positionFormatted": "02:20",
+    "durationFormatted": "07:03",
+    "remainingFormatted": "04:42"
+  }
+}
+
+
+
+After the initial snapshot, the server will automatically send updates when media information changes (with only the only changed informations)
+Exemple :
+{
+  "type": "update",
+  "main": {
+    "playbackStatus": "pause"
+  }
+}
+
+==============================
+===== WS : MEDIA CONTROL =====
+==============================
+Exemple to send a playback command:
+{
+  "type": "control",
+  "source": "com.squirrel.TIDAL.TIDAL",
+  "action": "next"
+}
+This would skip to the next song on TIDAL
+If you want to try it on PowerShell, once connected to the ws serv, just send the json you want on one line : {"type": "control","source": "com.squirrel.TIDAL.TIDAL","action": "next"}
+
+"source" is optionnal : it will change the "Main" session if not specified
+Available actions : play, pause, toggle, next, previous and stop
+
+Exemple of succedded response once you sent the control commande : 
+{
+  "type": "controlResult",
+  "source": "Main",
+  "action": "toggle",
+  "success": true
+}
+
+/!\ Not every media player supports every playback action (ie : you can't send "next" on a Twitch live)
+""";
+
+    WriteDocumentationIfChanged(apiDocPath, apiDoc);
+}
+
 
 ////// DONNEES SESSION
 void PublishState(Dictionary<string, MediaControls> controlsByFolder)
@@ -894,7 +1092,7 @@ object ReadSessionSnapshot(string folder, string source, PublishedState state)
 
     if (staticEnabled)
     {
-        result["media"] = new JsonObject
+        result["static"] = new JsonObject
         {
             ["title"] = Read("static_title.txt"),
             ["artist"] = Read("static_artist.txt"),
@@ -1092,7 +1290,7 @@ JsonObject? BuildSessionDelta(string folder, PublishedState before, PublishedSta
         Compare(dynamic, "cover", "dynamic_cover.jpg");
     }
 
-    if (media.Count > 0) delta["media"] = media;
+    if (media.Count > 0) delta["static"] = media;
     if (dynamic.Count > 0) delta["dynamic"] = dynamic;
 
     // Timeline COMPLETE uniquement lors d'un changement de morceau ou d'etat.
@@ -1168,48 +1366,39 @@ void RememberTimeline(string folder, PublishedState state,
 async Task HandleWebSocketAsync(HttpListenerContext context)
 {
     WebSocket? ws = null;
+    using var sendLock = new SemaphoreSlim(1, 1);
     try
     {
-        var wsContext = await context.AcceptWebSocketAsync(null);
-        ws = wsContext.WebSocket;
+        ws = (await context.AcceptWebSocketAsync(null)).WebSocket;
         Console.WriteLine("WebSocket client connected");
 
-        // Snapshot initial, avec la timeline pour chaque session.
         PublishedState previous = Volatile.Read(ref currentState);
+
         byte[] snapshot = JsonSerializer.SerializeToUtf8Bytes(new
         {
             type = "snapshot",
             data = BuildJsonState(previous)
         });
-        await ws.SendAsync(new ArraySegment<byte>(snapshot),
-            WebSocketMessageType.Text, true, CancellationToken.None);
 
-        // Une reference de lecture independante par source et par client.
+        await SendWsAsync(ws, sendLock, snapshot);
+
         TimelineSync sync = new();
         RememberTimeline(mainOutputFolder, previous, sync);
         foreach (string name in previous.Sessions)
             if (!name.Equals("Main", StringComparison.OrdinalIgnoreCase))
                 RememberTimeline(Path.Combine(outputFolder, name), previous, sync);
 
-        Task receiveTask = ReceiveWebSocketAsync(ws);
-
+        Task receiveTask = ReceiveWebSocketAsync(ws, sendLock);
         while (ws.State == WebSocketState.Open && !receiveTask.IsCompleted)
         {
             await Task.Delay(250);
             PublishedState next = Volatile.Read(ref currentState);
-            if (ReferenceEquals(previous, next))
-            {
-                continue;
-            }
+            if (ReferenceEquals(previous, next)) continue;
 
             JsonObject? delta = BuildWebSocketDelta(previous, next, sync);
             if (delta != null)
             {
-                byte[] json = JsonSerializer.SerializeToUtf8Bytes(delta);
-                await ws.SendAsync(new ArraySegment<byte>(json),
-                    WebSocketMessageType.Text, true, CancellationToken.None);
-
-                // Ne mettre a jour la reference qu'apres l'envoi reussi.
+                await SendWsAsync(ws, sendLock, JsonSerializer.SerializeToUtf8Bytes(delta));
                 if (delta["main"] is JsonObject mainDelta && mainDelta.ContainsKey("timeline"))
                     RememberTimeline(mainOutputFolder, next, sync);
 
@@ -1220,10 +1409,9 @@ async Task HandleWebSocketAsync(HttpListenerContext context)
             }
             previous = next;
         }
-
         await receiveTask;
     }
-    catch (WebSocketException) { /* Deconnexion du client */ }
+    catch (WebSocketException) { /* Client disconnected */ }
     catch (Exception ex) { Console.WriteLine($"WebSocket error: {ex}"); }
     finally
     {
@@ -1241,41 +1429,87 @@ async Task SendJsonAsync(HttpListenerResponse response, object payload, int stat
     await response.OutputStream.WriteAsync(bytes);
 }
 
-async Task ReceiveWebSocketAsync(WebSocket ws)
+// One sender at a time, per WebSocket client.
+async Task SendWsAsync(WebSocket ws, SemaphoreSlim sendLock, byte[] data)
 {
-    byte[] buffer = new byte[1024];
+    await sendLock.WaitAsync();
+    try
+    {
+        if (ws.State == WebSocketState.Open)
+            await ws.SendAsync(new ArraySegment<byte>(data),
+                WebSocketMessageType.Text, true, CancellationToken.None);
+    }
+    finally { sendLock.Release(); }
+}
+
+async Task ReceiveWebSocketAsync(WebSocket ws, SemaphoreSlim sendLock)
+{
+    byte[] buffer = new byte[4096];
+    const int maxMessageSize = 16 * 1024;
 
     try
     {
         while (ws.State == WebSocketState.Open)
         {
-            WebSocketReceiveResult result = await ws.ReceiveAsync(
-                new ArraySegment<byte>(buffer),
-                CancellationToken.None
-            );
-
-            if (result.MessageType == WebSocketMessageType.Close)
+            using var message = new MemoryStream();
+            WebSocketReceiveResult result;
+            do
             {
-                Console.WriteLine("WebSocket client requested close");
-
-                await ws.CloseOutputAsync(
-                    WebSocketCloseStatus.NormalClosure,
-                    "Closing",
-                    CancellationToken.None
+                result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                Console.WriteLine(
+                    $"WS RECEIVED: {Encoding.UTF8.GetString(buffer, 0, result.Count)}"
                 );
+                if (result.MessageType == WebSocketMessageType.Close ||
+                    result.MessageType != WebSocketMessageType.Text ||
+                    message.Length + result.Count > maxMessageSize)
+                {
+                    await sendLock.WaitAsync();
+                    try
+                    {
+                        if (ws.State == WebSocketState.Open)
+                            await ws.CloseOutputAsync(
+                                message.Length + result.Count > maxMessageSize
+                                    ? WebSocketCloseStatus.MessageTooBig
+                                    : WebSocketCloseStatus.NormalClosure,
+                                "Closing", CancellationToken.None);
+                    }
+                    finally { sendLock.Release(); }
+                    return;
+                }
+                message.Write(buffer, 0, result.Count);
+            } while (!result.EndOfMessage);
 
-                break;
+            try
+            {
+                using var doc = JsonDocument.Parse(message.ToArray());
+                var json = doc.RootElement;
+                if (json.ValueKind != JsonValueKind.Object ||
+                    !json.TryGetProperty("type", out var type) ||
+                    type.ValueKind != JsonValueKind.String ||
+                    type.GetString() != "control") continue;
+
+                string source = json.TryGetProperty("source", out var s) &&
+                    s.ValueKind == JsonValueKind.String ? s.GetString() ?? "Main" : "Main";
+                string action = json.TryGetProperty("action", out var a) &&
+                    a.ValueKind == JsonValueKind.String ? a.GetString() ?? "" : "";
+
+                bool success = mediaControl && await ControlMediaAsync(source, action);
+                await SendWsAsync(ws, sendLock, JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    type = "controlResult",
+                    source,
+                    action,
+                    success
+                }));
+            }
+            catch (JsonException)
+            {
+                if (debug) Console.WriteLine("WebSocket: invalid JSON");
             }
         }
     }
-    catch (WebSocketException)
-    {
-        // Connexion interrompue brutalement.
-    }
-    catch (ObjectDisposedException)
-    {
-        // Socket déjà fermé.
-    }
+    catch (WebSocketException) { /* Client déconnecté */ }
+    catch (ObjectDisposedException) { }
 }
 
 ////// GITHUB UPDATE CHECK
