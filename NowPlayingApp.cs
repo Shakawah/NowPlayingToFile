@@ -27,7 +27,7 @@ public sealed partial class NowPlayingApp
     private bool writefile, http, websocket, staticEnabled, dynamicEnabled, timingEnabled, mediaControl, debug, checkForUpdates, showWelcome;
     private int port, timeCheck;
     private string outputFolder = "", mainOutputFolder = "", sessionsFile = "", mainKey = "";
-    private const string currentVersion = "3.0";
+    private const string currentVersion = "3.1";
     private const string githubLatestReleaseApi = "https://api.github.com/repos/Shakawah/NowPlayingToFile/releases/latest";
     private Dictionary<string, string> lastWrittenFiles = new();
     private PublishedState currentState = new();
