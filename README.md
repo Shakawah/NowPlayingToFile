@@ -60,7 +60,7 @@ You can also use HTTP calls to control your medias (play / pause / next ...)
 #### MY PLAYER IS NOT SHOWING
 NowPlayingToFile detects applications that use Windows SMTC (System Media Transport Controls).
 Some players (VLC, Winamp, Qobuz, and others) don't support SMTC natively, but plugins or extensions may be available to make them compatible.
-Compatibility should be similar to Nutty's list, which you can find here : https://nuttylmao.notion.site/38f19969b23780359d57e0173c382266?v=38f19969b23780358036000c8cb21800
+Compatibility should be similar to Nutty's list, which you can find here : [Nutty's List](https://nuttylmao.notion.site/38f19969b23780359d57e0173c382266?v=38f19969b23780358036000c8cb21800)
 We're not using exactly the same technology, but most of the solutions listed there should work with NowPlayingToFile too!
     
 #### SUPPORT ME 
