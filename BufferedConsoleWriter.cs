@@ -52,7 +52,15 @@ public sealed class BufferedConsoleWriter : TextWriter
     {
         lock (sync)
         {
-            consoleWriter ??= new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            Console.OutputEncoding = Encoding.UTF8;
+
+            consoleWriter ??= new StreamWriter(
+                Console.OpenStandardOutput(),
+                new UTF8Encoding(false))
+            {
+                AutoFlush = true
+            };
+
             consoleWriter.Write(history.ToString());
         }
     }

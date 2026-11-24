@@ -61,11 +61,14 @@ public sealed partial class NowPlayingApp
         }
         else
         {
-            session = manager.GetSessions().FirstOrDefault(s =>
-                MakeSafeFolderName(s.SourceAppUserModelId ?? "Unknown")
-                    .Equals(source, StringComparison.OrdinalIgnoreCase));
+            var state = Volatile.Read(ref currentState);
+
+            string sourceId = state.SourceIds.TryGetValue(source, out string? id) ? id : source;
+
+            session = manager.GetSessions().FirstOrDefault(s => string.Equals(s.SourceAppUserModelId, sourceId, StringComparison.OrdinalIgnoreCase) ||
+                MakeSafeFolderName(s.SourceAppUserModelId ?? "Unknown").Equals(sourceId, StringComparison.OrdinalIgnoreCase));
         }
-    
+
         if (session == null)
             return false;
     
@@ -109,6 +112,4 @@ public sealed partial class NowPlayingApp
             return false;
         }
     }
-
-
 }

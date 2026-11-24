@@ -58,7 +58,7 @@ public sealed partial class NowPlayingApp
                 "NowPlayingToFile - Update available",
                 0x00000004 | 0x00000040 | 0x00010000);
     
-            if (answer == 6) // IDYES
+            if (answer == 6) // 6 = Oui
             {
                 Process.Start(new ProcessStartInfo(releaseUrl) { UseShellExecute = true });
             }

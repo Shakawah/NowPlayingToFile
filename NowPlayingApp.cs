@@ -24,10 +24,13 @@ using TimelineSync = System.Collections.Generic.Dictionary<string, (double Posit
 
 public sealed partial class NowPlayingApp
 {
-    private bool writefile, http, websocket, staticEnabled, dynamicEnabled, timingEnabled, mediaControl, debug, checkForUpdates, showWelcome;
+    private bool writefile, staticEnabled, dynamicEnabled, timingEnabled, mediaControl, debug, checkForUpdates, showWelcome;
+    private volatile bool http, websocket;
+    private HttpListener? listener;
+    private TrayManager trayManager = null!;
     private int port, timeCheck;
     private string outputFolder = "", mainOutputFolder = "", sessionsFile = "", mainKey = "";
-    private const string currentVersion = "3.1";
+    private const string currentVersion = "3.2";
     private const string githubLatestReleaseApi = "https://api.github.com/repos/Shakawah/NowPlayingToFile/releases/latest";
     private Dictionary<string, string> lastWrittenFiles = new();
     private PublishedState currentState = new();
@@ -44,10 +47,12 @@ public sealed partial class NowPlayingApp
     private Dictionary<string, DateTime> dynamicStopSince = new();
     private HashSet<char> invalidChars = Path.GetInvalidFileNameChars().ToHashSet();
     private GlobalSystemMediaTransportControlsSessionManager manager = null!;
+    private readonly Dictionary<string, string> sessionFolderNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> sourceIdsByFolder = new(StringComparer.OrdinalIgnoreCase);
+    private bool legacyFolderNoticeShown = false;
 
     public async Task RunAsync()
     {
-        // Settings and tray UI are maintained in separate files.
         var logWriter = new BufferedConsoleWriter();
         Console.SetOut(logWriter);
         Console.SetError(logWriter);
@@ -68,9 +73,11 @@ public sealed partial class NowPlayingApp
         checkForUpdates = appSettings.CheckForUpdates;
         showWelcome = appSettings.ShowWelcome;
 
-        
-        var trayManager = new TrayManager(settingsPath, outputFolder, logWriter, showWelcome);
-        trayManager.Start();
+
+        trayManager = new TrayManager(settingsPath, outputFolder, logWriter, showWelcome, port, http, websocket);
+
+        trayManager.HttpChanged += SetHttpEnabled;
+        trayManager.WebSocketChanged += SetWebSocketEnabled;
 
         Console.WriteLine("==========================================");
         Console.WriteLine($"=== NowPlayingToFile v{currentVersion} - STARTING ===");
@@ -109,29 +116,14 @@ public sealed partial class NowPlayingApp
 
 
         sessionsFile = Path.Combine(outputFolder, "sessions.txt");
-        knownSessions = File.Exists(sessionsFile) ? File.ReadAllLines(sessionsFile).ToList() : new List<string>();
 
         manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
         mainKey = "MAIN";
 
-        using var listener = new HttpListener();
         Stopwatch sw;
 
-        if (http || websocket || mediaControl)
-        {
-            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            try
-            {
-                listener.Start();
-                _ = RunHttpServerAsync(listener);
-                if (http) Console.WriteLine($"HTTP SERV : http://127.0.0.1:{port}/");
-                if (websocket) Console.WriteLine($"WS SERV   : ws://127.0.0.1:{port}/ws/");
-            }
-            catch (HttpListenerException ex)
-            {
-                Console.WriteLine($"HTTP server unavailable: {ex}");
-            }
-        }
+        UpdateServerState();
+        trayManager.Start();
 
 
         while (true)
@@ -209,7 +201,7 @@ public sealed partial class NowPlayingApp
                             WriteTextIfChanged(Path.Combine(mainOutputFolder, "static_album.txt"), album);
                             WriteTextIfChanged(Path.Combine(mainOutputFolder, "static_album_spaced.txt"), $"{album}          ");
 
-                            Console.WriteLine($"{DateTime.Now:T} - MAIN SESSION {mainSession.SourceAppUserModelId} - {full}");
+                            Console.WriteLine($"{DateTime.Now:T} - MAIN SESSION {mainSession.SourceAppUserModelId} - {SourceNameResolver.GetDisplayName(mainSession.SourceAppUserModelId)} - {full}");
                         }
 
                         if (isPlaying && (songChanged || rewrite))
@@ -240,10 +232,17 @@ public sealed partial class NowPlayingApp
                     try
                     {
                         string sourceName = session_.SourceAppUserModelId ?? "Unknown";
+                        string displayName = SourceNameResolver.GetDisplayName(sourceName);
 
-                        string safeFolderName = MakeSafeFolderName(sourceName);
+                        string safeFolderName = GetSessionFolderName(sourceName, displayName);
                         string sessionFolder = Path.Combine(outputFolder, safeFolderName);
-                        if (writefile) Directory.CreateDirectory(sessionFolder);
+
+                        sourceIdsByFolder[safeFolderName] = sourceName;
+
+                        if (writefile)
+                        {
+                            Directory.CreateDirectory(sessionFolder);
+                        }
 
                         if (!knownSessions.Contains(safeFolderName))
                         {
@@ -305,7 +304,7 @@ public sealed partial class NowPlayingApp
                             WriteTextIfChanged(Path.Combine(sessionFolder, "static_album.txt"), album_);
                             WriteTextIfChanged(Path.Combine(sessionFolder, "static_album_spaced.txt"), $"{album_}          ");
 
-                            Console.WriteLine($"{DateTime.Now:T} - {session_.SourceAppUserModelId} - {full_}");
+                            Console.WriteLine($"{DateTime.Now:T} - {session_.SourceAppUserModelId} - {displayName} - {full_}");
                         }
 
                         if (isPlaying_ && (songChanged_ || rewrite_))

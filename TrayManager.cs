@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -8,12 +8,19 @@ using System.Windows.Forms;
 
 public sealed class TrayManager
 {
-    [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
-    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AllocConsole();
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     private readonly string settingsPath;
@@ -21,12 +28,42 @@ public sealed class TrayManager
     private readonly BufferedConsoleWriter logs;
     private readonly bool showWelcome;
 
-    public TrayManager(string settingsPath, string outputFolder, BufferedConsoleWriter logs, bool showWelcome)
+    private readonly int port;
+    private bool http;
+    private bool websocket;
+
+    public event Action<bool>? HttpChanged;
+    public event Action<bool>? WebSocketChanged;
+    private volatile bool serverRunning;
+
+    public TrayManager(
+        string settingsPath,
+        string outputFolder,
+        BufferedConsoleWriter logs,
+        bool showWelcome,
+        int port,
+        bool http,
+        bool websocket)
     {
         this.settingsPath = settingsPath;
         this.outputFolder = outputFolder;
         this.logs = logs;
         this.showWelcome = showWelcome;
+        this.port = port;
+        this.http = http;
+        this.websocket = websocket;
+    }
+
+    public void SetServerRunning(bool running)
+    {
+        serverRunning = running;
+    }
+
+    private string GetServerStatus(bool enabled)
+    {
+        if (!enabled) return "Disabled";
+
+        return serverRunning ? "Running" : "Offline";
     }
 
     public void Start()
@@ -35,40 +72,180 @@ public sealed class TrayManager
         {
             using var tray = new NotifyIcon
             {
-                Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application,
+                Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)
+                    ?? SystemIcons.Application,
+
                 Text = "NowPlayingToFile",
                 Visible = true,
                 BalloonTipIcon = ToolTipIcon.Info,
                 BalloonTipTitle = "NowPlayingToFile",
-                BalloonTipText = "NowPlayingToFile is running in the background. Right-click the tray icon to show the console or exit."
+                BalloonTipText = "NowPlayingToFile is running in the background."
             };
+
             using var menu = new ContextMenuStrip();
-            menu.Items.Add("README", null, (_, _) => OpenFile(Path.Combine(outputFolder, "README.txt")));
-            menu.Items.Add("Settings", null, (_, _) => OpenFile(settingsPath));
-            menu.Items.Add(new ToolStripSeparator());
+
+            string httpUrl = $"http://127.0.0.1:{port}/";
+            string wsUrl = $"ws://127.0.0.1:{port}/ws/";
+
+            // MAIN MENU
+
+
             menu.Items.Add("Open Media Folder", null, (_, _) => OpenFolder(outputFolder));
+
             menu.Items.Add(new ToolStripSeparator());
-            var toggle = menu.Items.Add("Show Console");
-            menu.Opening += (_, _) => toggle.Text = IsWindowVisible(GetConsoleWindow())
-                ? "Hide Console" : "Show Console";
+
+            menu.Items.Add("README", null, (_, _) => OpenFile(Path.Combine(outputFolder, "README.txt")));
+
+            menu.Items.Add("Settings", null, (_, _) => OpenFile(settingsPath));
+
+
+            menu.Items.Add(new ToolStripSeparator());
+
+            // DEVELOPER TOOLS
+
+            var developerMenu = new ToolStripMenuItem("Developer Tools");
+
+            // Console
+
+            var toggle = developerMenu.DropDownItems.Add("Show Console");
+
             toggle.Click += (_, _) => ToggleConsole();
+
             tray.DoubleClick += (_, _) => ToggleConsole();
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Support Shakawah", null, (_, _) =>
+
+            developerMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            // HTTP API
+
+            var httpMenu = new ToolStripMenuItem("HTTP API");
+
+            var httpToggle = new ToolStripMenuItem("Enabled")
             {
-                Process.Start(new ProcessStartInfo
+                CheckOnClick = true,
+                Checked = http
+            };
+
+            httpToggle.Click += (_, _) =>
+            {
+                try
                 {
-                    FileName = "https://ko-fi.com/shakawah",
-                    UseShellExecute = true
-                });
-            });
+                    SaveSetting("http", httpToggle.Checked ? "true" : "false");
+                }
+                catch (Exception ex)
+                {
+                    httpToggle.Checked = http;
+                    MessageBox.Show(ex.Message, "NowPlayingToFile");
+                    return;
+                }
+
+                http = httpToggle.Checked;
+                HttpChanged?.Invoke(http);
+            };
+
+            httpMenu.DropDownItems.Add(httpToggle);
+            httpMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            var httpOpen = httpMenu.DropDownItems.Add(
+                "Open in Browser", null, (_, _) => OpenUrl(httpUrl));
+
+            var httpCopy = httpMenu.DropDownItems.Add(
+                "Copy HTTP URL", null, (_, _) => Clipboard.SetText(httpUrl));
+
+            developerMenu.DropDownItems.Add(httpMenu);
+
+
+            // WebSocket
+
+            var wsMenu = new ToolStripMenuItem("WebSocket");
+
+            var wsToggle = new ToolStripMenuItem("Enabled")
+            {
+                CheckOnClick = true,
+                Checked = websocket
+            };
+
+            wsToggle.Click += (_, _) =>
+            {
+                try
+                {
+                    SaveSetting("websocket", wsToggle.Checked ? "true" : "false");
+                }
+                catch (Exception ex)
+                {
+                    wsToggle.Checked = websocket;
+                    MessageBox.Show(ex.Message, "NowPlayingToFile");
+                    return;
+                }
+
+                websocket = wsToggle.Checked;
+                WebSocketChanged?.Invoke(websocket);
+            };
+
+            wsMenu.DropDownItems.Add(wsToggle);
+            wsMenu.DropDownItems.Add(new ToolStripSeparator());
+
+            var wsCopy = wsMenu.DropDownItems.Add(
+                "Copy WebSocket URL", null, (_, _) => Clipboard.SetText(wsUrl));
+
+            developerMenu.DropDownItems.Add(wsMenu);
+
+            // Doc et GitHub
+
+            developerMenu.DropDownItems.Add("API Documentation", null, (_, _) =>
+                OpenFile(Path.Combine(outputFolder, "API_Doc.txt")));
+
+            developerMenu.DropDownItems.Add("GitHub", null, (_, _) =>
+                OpenUrl("https://github.com/Shakawah/NowPlayingToFile"));
+
+            menu.Items.Add(developerMenu);
+
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Quit Now Playing To File", null, (_, _) =>
+
+            // Support
+
+            menu.Items.Add("Support Me ♥", null, (_, _) =>
+                OpenUrl("https://ko-fi.com/shakawah"));
+
+            menu.Items.Add(new ToolStripSeparator());
+
+            // Quit
+
+            menu.Items.Add("Quit", null, (_, _) =>
             {
                 tray.Visible = false;
                 Environment.Exit(0);
             });
+
+            // Refresh developer tools when opened
+
+            void RefreshDeveloperMenu()
+            {
+                toggle.Text = IsWindowVisible(GetConsoleWindow())
+                    ? "Hide Console"
+                    : "Show Console";
+
+                httpMenu.Text = $"HTTP API ({GetServerStatus(http)})";
+                wsMenu.Text = $"WebSocket ({GetServerStatus(websocket)})";
+
+                httpToggle.Checked = http;
+                wsToggle.Checked = websocket;
+
+                httpOpen.Enabled = http && serverRunning;
+                httpCopy.Enabled = http && serverRunning;
+                wsCopy.Enabled = websocket && serverRunning;
+            }
+
+            developerMenu.DropDownOpening += (_, _) => RefreshDeveloperMenu();
+
+            httpMenu.DropDownOpening += (_, _) => RefreshDeveloperMenu();
+            wsMenu.DropDownOpening += (_, _) => RefreshDeveloperMenu();
+
+            httpToggle.Click += (_, _) => RefreshDeveloperMenu();
+            wsToggle.Click += (_, _) => RefreshDeveloperMenu();
+
             tray.ContextMenuStrip = menu;
+
+            // WELCOME WINDOW
 
             if (showWelcome)
             {
@@ -87,7 +264,13 @@ public sealed class TrayManager
                 welcome.Show();
             }
 
-            using var timer = new System.Windows.Forms.Timer { Interval = 3000 };
+            // STARTUP NOTIFICATION
+
+            using var timer = new System.Windows.Forms.Timer
+            {
+                Interval = 3000
+            };
+
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
@@ -101,15 +284,18 @@ public sealed class TrayManager
                     ToolTipIcon.Info
                 );
             };
+
             timer.Start();
+
             Application.Run();
         });
+
         thread.SetApartmentState(ApartmentState.STA);
         thread.IsBackground = true;
         thread.Start();
     }
 
-    void SaveSetting(string key, string value)
+    private void SaveSetting(string key, string value)
     {
         string[] lines = File.ReadAllLines(settingsPath);
         bool found = false;
@@ -142,11 +328,15 @@ public sealed class TrayManager
     private void ToggleConsole()
     {
         IntPtr console = GetConsoleWindow();
+
         if (console == IntPtr.Zero)
         {
-            if (AllocConsole()) logs.AttachConsole();
+            if (AllocConsole())
+                logs.AttachConsole();
+
             return;
         }
+
         if (IsWindowVisible(console))
         {
             logs.DetachConsole();
@@ -159,13 +349,33 @@ public sealed class TrayManager
         }
     }
 
+    private static void OpenUrl(string url)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true
+        });
+    }
+
     private static void OpenFile(string path)
     {
         if (File.Exists(path))
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        {
+            Process.Start(new ProcessStartInfo(path)
+            {
+                UseShellExecute = true
+            });
+        }
         else
-            MessageBox.Show($"File not found:\n{path}", "NowPlayingToFile",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        {
+            MessageBox.Show(
+                $"File not found:\n{path}",
+                "NowPlayingToFile",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+        }
     }
 
     private static void OpenFolder(string path)

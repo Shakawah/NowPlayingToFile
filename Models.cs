@@ -16,7 +16,7 @@ public sealed class PublishedState
     public Dictionary<string, string> Files { get; init; } = new();
     public string[] Sessions { get; init; } = Array.Empty<string>();
     public Dictionary<string, MediaControls> Controls { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-
+    public Dictionary<string, string> SourceIds { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public DateTimeOffset PublishedAt { get; init; }
 }
 

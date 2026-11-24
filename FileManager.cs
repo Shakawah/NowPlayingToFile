@@ -43,7 +43,66 @@ public sealed partial class NowPlayingApp
     {
         return string.Concat(name.Select(c => invalidChars.Contains(c) ? '_' : c));
     }
-    
+
+    private string GetSessionFolderName(string sourceName, string displayName)
+    {
+        if (sessionFolderNames.TryGetValue(sourceName, out string? folderName))
+            return folderName;
+
+        string oldFolderName = MakeSafeFolderName(sourceName);
+        string newFolderName = MakeSafeFolderName(displayName);
+
+        string oldFolderPath = Path.Combine(outputFolder, oldFolderName);
+
+        bool oldFolderExists = Directory.Exists(oldFolderPath);
+
+        folderName = oldFolderExists ? oldFolderName : newFolderName;
+
+        sessionFolderNames[sourceName] = folderName;
+
+        // Notifier les anciens users qu'ils peuvent supprimer les dossiers
+        if (oldFolderExists && !legacyFolderNoticeShown && !oldFolderName.Equals(newFolderName, StringComparison.OrdinalIgnoreCase))
+        {
+            legacyFolderNoticeShown = true;
+
+            _ = Task.Run(() =>
+            {/*
+                MessageBox.Show(
+                    "NowPlayingToFile now have more readable application folder names.\n\n" +
+                    "Your existing folders have been preserved to maintain compatibility with your current setup.\n\n" +
+                    $"Delete old application folders located in {outputFolder}\n" +
+                    "Then restart NowPlayingToFile.\n\n" +
+                    "Note: You may need to update your existing OBS sources or other integrations with the new Folders.\n\n" +
+                    "If you want you can close this popup and do this another time.",
+                    "NowPlayingToFile - New folder names",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+                */
+                MessageBox.Show(
+                    $"""
+                    NowPlayingToFile now uses more readable application folder names.
+                
+                    To use the new names:
+                    1. Close NowPlayingToFile.
+                    2. Delete the old application folders in: {outputFolder}
+                    (You can delete everything in this folder. All media folders and files will be recreated automatically.)
+                    3. Restart NowPlayingToFile.
+                
+                    Note: Your OBS sources or other integrations may need to be updated.
+
+                    You can keep your existing folders for now, but I recommend switching to the new names at some point!
+                    """,
+                    "NowPlayingToFile - New folder names",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+            });
+        }
+
+        return folderName;
+    }
+
     bool DataEnabled(string path)
     {
         string name = Path.GetFileName(path);
